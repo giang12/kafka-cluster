@@ -1,0 +1,62 @@
+#!/bin/bash
+
+usage_info() {
+  echo "Usage: start [zookeper|kafka]"
+  exit 1
+}
+
+update_config() {
+  config=$1
+  # escape dots in the name.
+  name="${2/./\\.}"
+  value=$3
+  sed -r -i "s@(^|^#)(${name})=(.*)@\2=${value}@g" $1
+}
+
+update_kafka_config(){
+  update_config config/server.properties 'advertised.host.name' "$KAFKA_ADVERTISED_HOST_NAME"
+  update_config config/server.properties 'port'                 "$KAFKA_ADVERTISED_PORT"
+  update_config config/server.properties 'listeners'            "PLAINTEXT://:$KAFKA_ADVERTISED_PORT"
+  update_config config/server.properties 'broker.id'            "$KAFKA_BROKER_ID"
+  update_config config/server.properties 'log.dirs'             "$KAFKA_LOG_DIRS"
+
+  update_config config/server.properties 'log.retention.hours'  "$KAFKA_LOG_RETENTION_HOURS"
+  update_config config/server.properties 'log.retention.bytes'  "$KAFKA_LOG_RETENTION_BYTES"
+
+  update_config config/server.properties 'zookeeper.connect'    "$KAFKA_ZOOKEEPER_CONNECT"
+
+}
+start_zookeeper() {
+  trap "$KAFKA_HOME/bin/zookeeper-server-stop.sh; echo 'ZooKeeper stopped.'; exit" SIGHUP SIGINT SIGTERM
+  bin/zookeeper-server-start.sh config/zookeeper.properties
+}
+
+start_kafka() {
+  update_kafka_config
+
+  trap "$KAFKA_HOME/bin/kafka-server-stop.sh; echo 'Kafka stopped.'; exit" SIGHUP SIGINT SIGTERM
+  bin/kafka-server-start.sh config/server.properties
+}
+
+
+# cli
+if (($# < 1)); then
+  usage_info
+fi
+
+service="$1"
+shift;
+
+cd $( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/..
+
+case "$service" in
+  zookeeper)
+    start_zookeeper
+    ;;
+  kafka)
+    start_kafka
+    ;;
+  *)
+    usage_info
+    ;;
+esac

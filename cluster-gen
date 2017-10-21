@@ -1,0 +1,71 @@
+#!/usr/bin/env ruby
+
+require 'yaml'
+
+IMAGE = 'zen12/kafka-cluster'
+MANAGER_IMAGE = 'zen12/kafka-manager-docker'
+
+# default cluster size is 3.
+cluster_size = ARGV.empty? ? 3 : ARGV[0].to_i
+
+# get Host IP
+if `uname`.strip == 'Darwin'
+  HOST_IP = `ipconfig getifaddr en0 || ipconfig getifaddr en1`.strip
+else
+  interface=`route -n | grep '^0.0.0.0'`.split("\n")[0].split(" ")[-1]
+  HOST_IP = `ip -4 addr show scope global dev #{interface} | grep inet`.split(" ")[1][0..-4]
+end
+
+puts "Host IP used for Kafka Brokers is #{HOST_IP}"
+
+# making compose file
+COMPOSE = {
+  'version' => '2',
+  'networks' => { 'cluster' => { 'driver' => 'bridge' } },
+  'services' => {
+    'kafka_manager' => {
+      'image' => MANAGER_IMAGE,
+      'ports' => [ "9000:9000" ],
+      'networks' => [ 'cluster' ],
+      'links' => [ "zookeeper:zookeeper" ],
+      'environment' => { 
+        'ZK_HOSTS'=>'zookeeper:2181'
+      }
+    },
+    'zookeeper' => {
+      'image' => IMAGE,
+      'command' => 'zookeeper',
+      'ports' => [ "2181:2181" ],
+      'networks' => [ 'cluster' ],
+    }
+  }
+}
+
+def add_broker(id)
+  name = "kafka_#{id}"
+  port = 9090 + id
+  COMPOSE['services'][name] = {
+    'image' => IMAGE,
+    'environment' => {
+      'KAFKA_ADVERTISED_PORT' => port,
+      'KAFKA_BROKER_ID' => id,
+      'KAFKA_ADVERTISED_HOST_NAME' => HOST_IP,
+      'KAFKA_LOG_DIRS' => '/kafka',
+      'KAFKA_LOG_RETENTION_HOURS' => 168,
+      'KAFKA_LOG_RETENTION_BYTES' => 1073741824,
+      'KAFKA_ZOOKEEPER_CONNECT' => "zookeeper:2181"
+    },
+    'hostname' => name,
+    'ports' => [ "#{port}:#{port}" ],
+    'networks' => [ 'cluster' ],
+    'links' => [ "zookeeper:zookeeper" ]
+  }
+end
+
+(1..cluster_size).each do |i|
+  add_broker(i)
+end
+
+File.write('docker-compose.yml', COMPOSE.to_yaml)
+
+puts COMPOSE.to_yaml
