@@ -20,9 +20,9 @@ compose file syntax version 2.
 
 1 zookeeper @ port `2181`
 
-1 kafka manager @ port `9000`
+1 kafka manager @ port `2190`
 
-Also, the ports `9091`, `9092`, and `9093` (for a default three broker
+Also, the ports `2091`, `2092`, and `2093` (for a default three broker
 setup) should be available.
 
 ## Running
@@ -51,7 +51,7 @@ If you do not want to delete data, use the `docker-compose` commands directly.
 ## Connectivity
 
 The cluster will contain one ZooKeeper node only accessible as `localhost:2181`.
-The brokers will be reachable under `localhost:9091,localhost:9092,...` and
+The brokers will be reachable under `localhost:2091,localhost:2092,...` and
 advertise Docker host IP to Kafka clients. As this is reachable from the host
 and from the Docker network, it is possible to connect to the cluster both
 from the host machine as well as from other Docker containers.
