@@ -69,6 +69,6 @@ end
   add_broker(i)
 end
 
-File.write('docker-compose.yml', COMPOSE.to_yaml)
+File.write('kafka-compose.yml', COMPOSE.to_yaml)
 
 puts COMPOSE.to_yaml
