@@ -42,7 +42,7 @@ COMPOSE = {
 }
 
 def add_broker(id)
-  name = "kafka_#{id}"
+  name = "broker_#{id}"
   port = 9090 + id
   COMPOSE['services'][name] = {
     'image' => IMAGE,
