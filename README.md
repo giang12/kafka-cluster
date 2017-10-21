@@ -1,3 +1,12 @@
+# Local Docker Kafka Cluster
+
+[![docker pulls](https://img.shields.io/docker/pulls/zen12/kafka-cluster.svg)](https://hub.docker.com/r/zen12/kafka-cluster/)
+[![docker stars](https://img.shields.io/docker/stars/zen12/kafka-cluster.svg)](https://hub.docker.com/r/zen12/kafka-cluster/)
+
+Creates a [Docker](https://www.docker.com)-based [Kafka](http://kafka.apache.org/)
+cluster with [docker-compose](https://docs.docker.com/compose) for local
+development of Kafka-based apps.
+
 ## Prerequisites
 
 Works for Linux and Mac (with the latest Docker for Mac), and uses docker
