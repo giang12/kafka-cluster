@@ -35,7 +35,7 @@ cluster size is three brokers) with
 ./cluster-up
 ```
 
-This will create a `docker-compose.yml` file in the directory that will be used
+This will create a `kafka-compose.yml` file in the directory that will be used
 by `./cluster-down` do delete the cluster (i.e. this stops and removes all data).
 If you do not want to delete data, use the `docker-compose` commands directly.
 ## Kafka Opts
