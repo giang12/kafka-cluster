@@ -4,7 +4,7 @@ MAINTAINER Zen Nguyen, https://github.com/giang12
 
 # Versions
 ARG scala_version=2.12
-ARG kafka_version=0.11.0.1
+ARG kafka_version=1.0.0
 
 # Fetch Kafka & Zookeeper tarfile from apache mirror & extract it to /kafka_<versions-info>.
 RUN \

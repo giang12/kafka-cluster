@@ -1,4 +1,4 @@
-# Local Docker Kafka Cluster
+# Docker Kafka Cluster
 
 [![docker pulls](https://img.shields.io/docker/pulls/zen12/kafka-cluster.svg)](https://hub.docker.com/r/zen12/kafka-cluster/)
 [![docker stars](https://img.shields.io/docker/stars/zen12/kafka-cluster.svg)](https://hub.docker.com/r/zen12/kafka-cluster/)

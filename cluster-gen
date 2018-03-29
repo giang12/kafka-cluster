@@ -4,6 +4,9 @@ require 'yaml'
 
 IMAGE = 'zen12/kafka-cluster'
 MANAGER_IMAGE = 'zen12/kafka-manager-docker'
+IPStart = 2090
+ManPort = 2190
+ZKPort = 2181
 
 # default cluster size is 3.
 cluster_size = ARGV.empty? ? 3 : ARGV[0].to_i
@@ -25,7 +28,7 @@ COMPOSE = {
   'services' => {
     'kafka_manager' => {
       'image' => MANAGER_IMAGE,
-      'ports' => [ "9000:9000" ],
+      'ports' => [ "#{ManPort}:9000" ],
       'networks' => [ 'cluster' ],
       'links' => [ "zookeeper:zookeeper" ],
       'environment' => { 
@@ -35,7 +38,7 @@ COMPOSE = {
     'zookeeper' => {
       'image' => IMAGE,
       'command' => 'zookeeper',
-      'ports' => [ "2181:2181" ],
+      'ports' => [ "#{ZKPort}:2181" ],
       'networks' => [ 'cluster' ],
     }
   }
@@ -43,7 +46,7 @@ COMPOSE = {
 
 def add_broker(id)
   name = "broker_#{id}"
-  port = 9090 + id
+  port = IPStart + id
   COMPOSE['services'][name] = {
     'image' => IMAGE,
     'environment' => {
@@ -66,6 +69,6 @@ end
   add_broker(i)
 end
 
-File.write('docker-compose.yml', COMPOSE.to_yaml)
+File.write('kafka-compose.yml', COMPOSE.to_yaml)
 
 puts COMPOSE.to_yaml
