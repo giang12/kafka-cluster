@@ -1,3 +1,3 @@
 #!/bin/bash
 
-docker-compose -f kafka-compose.yml --project-name kafka up -d --no-recreate
+docker stack deploy kafka -c kafka-compose.yml

@@ -1,4 +1,3 @@
 #!/bin/bash
 
-docker-compose -f kafka-compose.yml --project-name kafka stop
-docker-compose -f kafka-compose.yml --project-name kafka rm -f
+docker stack rm kafka

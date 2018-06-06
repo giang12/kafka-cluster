@@ -1,0 +1,45 @@
+---
+version: '3'
+networks:
+  cluster:
+    driver: overlay
+services:
+  kafka_manager:
+    image: zen12/kafka-manager-docker
+    ports:
+    - 2190:9000
+    networks:
+    - cluster
+    links:
+    - zookeeper:zookeeper
+    environment:
+      ZK_HOSTS: zookeeper:2181
+  zookeeper:
+    image: zen12/kafka-cluster
+    command: zookeeper
+    ports:
+    - 2181:2181
+    networks:
+    - cluster
+  broker_1:
+    image: zen12/kafka-cluster
+    environment:
+      KAFKA_BROKER_ID: 1
+      HOSTNAME_COMMAND: echo 192.168.1.13
+      KAFKA_LOG_DIRS: "/kafka-logs"
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_RETENTION_BYTES: 1073741824
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INSIDE:PLAINTEXT,OUTSIDE:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: INSIDE://:9092,OUTSIDE://_{HOSTNAME_COMMAND}:9094
+      KAFKA_LISTENERS: INSIDE://:9092,OUTSIDE://:9094
+      KAFKA_INTER_BROKER_LISTENER_NAME: INSIDE
+    volumes:
+    - "/var/run/docker.sock:/var/run/docker.sock"
+    hostname: broker_1
+    ports:
+    - 2091:9094
+    networks:
+    - cluster
+    links:
+    - zookeeper:zookeeper

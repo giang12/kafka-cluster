@@ -23,12 +23,12 @@ puts "Host IP used for Kafka Brokers is #{HOST_IP}"
 
 # making compose file
 COMPOSE = {
-  'version' => '2',
-  'networks' => { 'cluster' => { 'driver' => 'bridge' } },
+  'version' => '3',
+  'networks' => { 'cluster' => { 'driver' => 'overlay' } },
   'services' => {
     'kafka_manager' => {
       'image' => MANAGER_IMAGE,
-      'ports' => [ "#{ManPort}:2190" ],
+      'ports' => [ "#{ManPort}:9000" ],
       'networks' => [ 'cluster' ],
       'links' => [ "zookeeper:zookeeper" ],
       'environment' => { 
@@ -50,16 +50,22 @@ def add_broker(id)
   COMPOSE['services'][name] = {
     'image' => IMAGE,
     'environment' => {
-      'KAFKA_ADVERTISED_PORT' => port,
       'KAFKA_BROKER_ID' => id,
-      'KAFKA_ADVERTISED_HOST_NAME' => HOST_IP,
+      #'KAFKA_ADVERTISED_HOST_NAME' => HOST_IP,
+      'HOSTNAME_COMMAND' => "echo #{HOST_IP}",
+      #'HOSTNAME_COMMAND'=> "docker info | grep ^Name: | cut -d' ' -f 2",#get the IP of the HOST COMPUTER from within docker container
       'KAFKA_LOG_DIRS' => '/kafka-logs',
       'KAFKA_LOG_RETENTION_HOURS' => 168,
       'KAFKA_LOG_RETENTION_BYTES' => 1073741824,
-      'KAFKA_ZOOKEEPER_CONNECT' => "zookeeper:2181"
+      'KAFKA_ZOOKEEPER_CONNECT' => "zookeeper:2181",
+      'KAFKA_LISTENER_SECURITY_PROTOCOL_MAP'=> "INSIDE:PLAINTEXT,OUTSIDE:PLAINTEXT",
+      'KAFKA_ADVERTISED_LISTENERS'=> "INSIDE://:9092,OUTSIDE://_{HOSTNAME_COMMAND}:9094",
+      'KAFKA_LISTENERS' => "INSIDE://:9092,OUTSIDE://:9094",
+      'KAFKA_INTER_BROKER_LISTENER_NAME' => "INSIDE"
     },
+    'volumes' => [ "/var/run/docker.sock:/var/run/docker.sock" ],
     'hostname' => name,
-    'ports' => [ "#{port}:#{port}" ],
+    'ports' => [ "#{port}:9094" ],
     'networks' => [ 'cluster' ],
     'links' => [ "zookeeper:zookeeper" ]
   }
