@@ -1,32 +1,41 @@
 ---
 version: '3'
 networks:
-  cluster:
+  kafka-net:
     driver: overlay
+volumes:
+  manager_data: {}
+  zookeeper_data: {}
+  broker_1_data: {}
+  broker_2_data: {}
+  broker_3_data: {}
 services:
-  kafka_manager:
+  manager:
     image: zen12/kafka-manager-docker
     ports:
     - 2190:9000
     networks:
-    - cluster
+    - kafka-net
     links:
     - zookeeper:zookeeper
     environment:
       ZK_HOSTS: zookeeper:2181
+    volumes:
+    - manager_data:/conf
   zookeeper:
     image: zen12/kafka-cluster
     command: zookeeper
     ports:
     - 2181:2181
     networks:
-    - cluster
+    - kafka-net
   broker_1:
+    hostname: broker_1
     image: zen12/kafka-cluster
     environment:
       KAFKA_BROKER_ID: 1
       HOSTNAME_COMMAND: 'docker info | grep ^Name: | cut -d'' '' -f 2'
-      KAFKA_LOG_DIRS: "/kafka-logs"
+      KAFKA_LOG_DIRS: "/kafka-data"
       KAFKA_CREATE_TOPICS: __test1:1:1,app-logs:1:3:compact
       KAFKA_LOG_RETENTION_HOURS: 168
       KAFKA_LOG_RETENTION_BYTES: 1073741824
@@ -37,19 +46,20 @@ services:
       KAFKA_INTER_BROKER_LISTENER_NAME: INSIDE
     volumes:
     - "/var/run/docker.sock:/var/run/docker.sock"
-    hostname: broker_1
+    - broker_1_data:/kafka-data
     ports:
     - 2091:9094
     networks:
-    - cluster
+    - kafka-net
     links:
     - zookeeper:zookeeper
   broker_2:
+    hostname: broker_2
     image: zen12/kafka-cluster
     environment:
       KAFKA_BROKER_ID: 2
       HOSTNAME_COMMAND: 'docker info | grep ^Name: | cut -d'' '' -f 2'
-      KAFKA_LOG_DIRS: "/kafka-logs"
+      KAFKA_LOG_DIRS: "/kafka-data"
       KAFKA_CREATE_TOPICS: __test1:1:1,app-logs:1:3:compact
       KAFKA_LOG_RETENTION_HOURS: 168
       KAFKA_LOG_RETENTION_BYTES: 1073741824
@@ -60,19 +70,20 @@ services:
       KAFKA_INTER_BROKER_LISTENER_NAME: INSIDE
     volumes:
     - "/var/run/docker.sock:/var/run/docker.sock"
-    hostname: broker_2
+    - broker_2_data:/kafka-data
     ports:
     - 2092:9094
     networks:
-    - cluster
+    - kafka-net
     links:
     - zookeeper:zookeeper
   broker_3:
+    hostname: broker_3
     image: zen12/kafka-cluster
     environment:
       KAFKA_BROKER_ID: 3
       HOSTNAME_COMMAND: 'docker info | grep ^Name: | cut -d'' '' -f 2'
-      KAFKA_LOG_DIRS: "/kafka-logs"
+      KAFKA_LOG_DIRS: "/kafka-data"
       KAFKA_CREATE_TOPICS: __test1:1:1,app-logs:1:3:compact
       KAFKA_LOG_RETENTION_HOURS: 168
       KAFKA_LOG_RETENTION_BYTES: 1073741824
@@ -83,10 +94,10 @@ services:
       KAFKA_INTER_BROKER_LISTENER_NAME: INSIDE
     volumes:
     - "/var/run/docker.sock:/var/run/docker.sock"
-    hostname: broker_3
+    - broker_3_data:/kafka-data
     ports:
     - 2093:9094
     networks:
-    - cluster
+    - kafka-net
     links:
     - zookeeper:zookeeper

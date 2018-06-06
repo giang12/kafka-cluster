@@ -24,36 +24,45 @@ puts "Host IP used for Kafka Brokers is #{HOST_IP}"
 # making compose file
 COMPOSE = {
   'version' => '3',
-  'networks' => { 'cluster' => { 'driver' => 'overlay' } },
+  'networks' => { 'kafka-net' => { 'driver' => 'overlay' } },
+  'volumes' => { 'manager_data' => {} , 'zookeeper_data' => {}},
   'services' => {
-    'kafka_manager' => {
+    'manager' => {
       'image' => MANAGER_IMAGE,
       'ports' => [ "#{ManPort}:9000" ],
-      'networks' => [ 'cluster' ],
+      'networks' => [ 'kafka-net' ],
       'links' => [ "zookeeper:zookeeper" ],
       'environment' => { 
         'ZK_HOSTS'=>'zookeeper:2181'
-      }
+      },
+      'volumes' => [ 
+        "manager_data:/conf"
+      ]
     },
     'zookeeper' => {
       'image' => IMAGE,
       'command' => 'zookeeper',
       'ports' => [ "#{ZKPort}:2181" ],
-      'networks' => [ 'cluster' ],
+      'networks' => [ 'kafka-net' ],
     }
   }
 }
 
 def add_broker(id)
   name = "broker_#{id}"
+  data_volume = name + "_data"
   port = IPStart + id
+  
+  COMPOSE['volumes'][data_volume] = {}
+
   COMPOSE['services'][name] = {
+    'hostname' => name,
     'image' => IMAGE,
     'environment' => {
       'KAFKA_BROKER_ID' => id,
       #'KAFKA_ADVERTISED_HOST_NAME' => HOST_IP,
       'HOSTNAME_COMMAND' => "docker info | grep ^Name: | cut -d' ' -f 2",#get the IP of the HOST COMPUTER from within docker container
-      'KAFKA_LOG_DIRS' => '/kafka-logs',
+      'KAFKA_LOG_DIRS' => '/kafka-data',
       'KAFKA_CREATE_TOPICS' => "__test1:1:1,app-logs:1:3:compact",
       'KAFKA_LOG_RETENTION_HOURS' => 168,
       'KAFKA_LOG_RETENTION_BYTES' => 1073741824,
@@ -63,10 +72,12 @@ def add_broker(id)
       'KAFKA_LISTENERS' => "INSIDE://:9092,OUTSIDE://:9094",
       'KAFKA_INTER_BROKER_LISTENER_NAME' => "INSIDE"
     },
-    'volumes' => [ "/var/run/docker.sock:/var/run/docker.sock" ],
-    'hostname' => name,
+    'volumes' => [ 
+      "/var/run/docker.sock:/var/run/docker.sock",
+      "#{data_volume}:/kafka-data"
+    ],
     'ports' => [ "#{port}:9094" ],
-    'networks' => [ 'cluster' ],
+    'networks' => [ 'kafka-net' ],
     'links' => [ "zookeeper:zookeeper" ]
   }
 end
