@@ -29,7 +29,12 @@ RUN \
 ADD files/config/server.properties files/config/zookeeper.properties files/config/log4j.properties /kafka/config/
 
 # Add Kafka & Zookeeper start wrapper.
-ADD files/bin/start files/bin/update_kafka_config files/bin/broker-list.sh files/bin/create-topics.sh /usr/bin/
+ADD files/bin/start \
+    files/bin/start-kafka-shell.sh \
+    files/bin/update_kafka_config \
+    files/bin/broker-list.sh \
+    files/bin/create-topics.sh \
+    /usr/bin/
 
 RUN chmod -R a+x /usr/bin/ && export PATH=$PATH:/usr/bin
 

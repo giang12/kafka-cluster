@@ -25,8 +25,9 @@ services:
     image: zen12/kafka-cluster
     environment:
       KAFKA_BROKER_ID: 1
-      HOSTNAME_COMMAND: echo 192.168.1.13
+      HOSTNAME_COMMAND: 'docker info | grep ^Name: | cut -d'' '' -f 2'
       KAFKA_LOG_DIRS: "/kafka-logs"
+      KAFKA_CREATE_TOPICS: __test1:1:1,app-logs:1:3:compact
       KAFKA_LOG_RETENTION_HOURS: 168
       KAFKA_LOG_RETENTION_BYTES: 1073741824
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
@@ -39,6 +40,52 @@ services:
     hostname: broker_1
     ports:
     - 2091:9094
+    networks:
+    - cluster
+    links:
+    - zookeeper:zookeeper
+  broker_2:
+    image: zen12/kafka-cluster
+    environment:
+      KAFKA_BROKER_ID: 2
+      HOSTNAME_COMMAND: 'docker info | grep ^Name: | cut -d'' '' -f 2'
+      KAFKA_LOG_DIRS: "/kafka-logs"
+      KAFKA_CREATE_TOPICS: __test1:1:1,app-logs:1:3:compact
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_RETENTION_BYTES: 1073741824
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INSIDE:PLAINTEXT,OUTSIDE:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: INSIDE://:9092,OUTSIDE://_{HOSTNAME_COMMAND}:9094
+      KAFKA_LISTENERS: INSIDE://:9092,OUTSIDE://:9094
+      KAFKA_INTER_BROKER_LISTENER_NAME: INSIDE
+    volumes:
+    - "/var/run/docker.sock:/var/run/docker.sock"
+    hostname: broker_2
+    ports:
+    - 2092:9094
+    networks:
+    - cluster
+    links:
+    - zookeeper:zookeeper
+  broker_3:
+    image: zen12/kafka-cluster
+    environment:
+      KAFKA_BROKER_ID: 3
+      HOSTNAME_COMMAND: 'docker info | grep ^Name: | cut -d'' '' -f 2'
+      KAFKA_LOG_DIRS: "/kafka-logs"
+      KAFKA_CREATE_TOPICS: __test1:1:1,app-logs:1:3:compact
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_RETENTION_BYTES: 1073741824
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INSIDE:PLAINTEXT,OUTSIDE:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: INSIDE://:9092,OUTSIDE://_{HOSTNAME_COMMAND}:9094
+      KAFKA_LISTENERS: INSIDE://:9092,OUTSIDE://:9094
+      KAFKA_INTER_BROKER_LISTENER_NAME: INSIDE
+    volumes:
+    - "/var/run/docker.sock:/var/run/docker.sock"
+    hostname: broker_3
+    ports:
+    - 2093:9094
     networks:
     - cluster
     links:

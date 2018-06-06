@@ -52,9 +52,9 @@ def add_broker(id)
     'environment' => {
       'KAFKA_BROKER_ID' => id,
       #'KAFKA_ADVERTISED_HOST_NAME' => HOST_IP,
-      'HOSTNAME_COMMAND' => "echo #{HOST_IP}",
-      #'HOSTNAME_COMMAND'=> "docker info | grep ^Name: | cut -d' ' -f 2",#get the IP of the HOST COMPUTER from within docker container
+      'HOSTNAME_COMMAND' => "docker info | grep ^Name: | cut -d' ' -f 2",#get the IP of the HOST COMPUTER from within docker container
       'KAFKA_LOG_DIRS' => '/kafka-logs',
+      'KAFKA_CREATE_TOPICS' => "__test1:1:1,app-logs:1:3:compact",
       'KAFKA_LOG_RETENTION_HOURS' => 168,
       'KAFKA_LOG_RETENTION_BYTES' => 1073741824,
       'KAFKA_ZOOKEEPER_CONNECT' => "zookeeper:2181",
