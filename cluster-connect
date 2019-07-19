@@ -1,0 +1,94 @@
+#!/usr/bin/env python
+
+"""Kafka connect cluster
+
+Author: Irwin Li
+
+This python script sends a post request to an already deployed kafka connect
+service to establish an ElasticSearch sink connection.
+
+By default, the connector will map the map use the topic name in kafka as the
+index name in ElasticSearch. The schema is ignored, and the exact connection
+specfications are set in the payload variable.
+
+More detail about the Kafka connect REST interface, mapping topics to different
+indices and applying tranformations to index names can be found here:
+https://docs.confluent.io/current/connect/index.html
+
+usage: cluster-connect [-h] [--es ES] topics
+
+positional arguments:
+  name        Name of the connector. The same kafka connect service cannot have two connectors with the same name
+  topics      Comma separated string of topics to write to ElasticSearch
+
+optional arguments:
+  -h, --help  show this help message and exit
+  --es ES     ElasticSearch URI
+"""
+
+from socket import gethostname
+import subprocess
+import requests
+import argparse
+import json
+
+def find_kafka_host():
+	"""Finds and returns the IP address of the first found docker instance with
+	labels.server_type == 'kafka'. If there are no docker instances with the
+	server_type set to 'kafka', then it will raise an exception.
+
+	Output:
+	- (str): IP address of a docker instance with label.server_type=='kafka'
+	"""
+	# find correct host to use
+	hosts = subprocess.Popen("docker node ls --format {{.Hostname}}",
+		shell=True,
+		stdout=subprocess.PIPE
+	).stdout.read().strip()
+	hosts = hosts.split("\n")
+
+	# iterate through hosts and find a host with server_type=='kafka'
+	connect_hosts = []
+	for host in hosts:
+		ip_addr, server_type = subprocess.Popen("docker node inspect " + host
+			+ " --format '{{.Status.Addr}}::{{.Spec.Labels.connect}}'", # look for connector instances
+			shell=True, stdout=subprocess.PIPE
+		).stdout.read().strip().split('::')
+
+		if server_type == "yes": connect_hosts.append(ip_addr)
+	if connect_hosts: return connect_hosts
+	raise Exception("No instances found with `connect`: `yes`")
+
+if __name__ == "__main__":
+	# parse command line arguments
+	parser = argparse.ArgumentParser()
+	parser.add_argument("name", help="Name of the connector. The same kafka connect service cannot have two connectors with the same name")
+	parser.add_argument("topics", help="Comma separated string of topics to write to ElasticSearch")
+	parser.add_argument("tasksMax", help="Number of worker nodes to use for this connector")
+	parser.add_argument("--es", help="ElasticSearch URI", default="http://localhost:9200")
+	args = parser.parse_args()
+
+	# sent config data
+	headers = {
+		"Content-Type": "application/json"
+	}
+	payload = {
+		"name": args.name,
+		"config": {
+			"connector.class": "io.confluent.connect.elasticsearch.ElasticsearchSinkConnector",
+			"tasks.max": args.tasksMax, # tasks.max is the number of worker nodes to use for distributed mode
+			"topics": args.topics,
+			"key.ignore": "true",
+			"schema.ignore": "true",
+			"connection.url": args.es,
+			"type.name": "logs",
+			"name": args.name
+		}
+	}
+
+	# send post request
+	connect_hosts = find_kafka_host()
+	for i, host in enumerate(connect_hosts):
+		res = requests.post("http://" + host + ":" + str(8083+i) + "/connectors", headers=headers, data=json.dumps(payload))
+		if res.status_code == 201: break
+	print res.json()

@@ -6,7 +6,7 @@ usage_info() {
   exit 1
 }
 
-function update_config(){
+function update_config() {
   # Allow specific kafka versions to perform any unique bootstrap operations
   OVERRIDE_FILE="/opt/overrides/${KAFKA_VERSION}.sh"
   if [[ -x "$OVERRIDE_FILE" ]]; then
@@ -155,13 +155,38 @@ function update_config(){
   fi
 }
 
+function update_zk_config() {
+    CONFIG="$KAFKA_HOME/config/zookeeper.properties"
+
+    echo "clientPort=$ZOO_PORT" >> "$CONFIG"
+    echo "dataDir=$ZOO_DATA_DIR" >> "$CONFIG"
+    echo "dataLogDir=$ZOO_DATA_LOG_DIR" >> "$CONFIG"
+
+    echo "tickTime=$ZOO_TICK_TIME" >> "$CONFIG"
+    echo "initLimit=$ZOO_INIT_LIMIT" >> "$CONFIG"
+    echo "syncLimit=$ZOO_SYNC_LIMIT" >> "$CONFIG"
+
+    echo "autopurge.snapRetainCount=$ZOO_AUTOPURGE_SNAPRETAINCOUNT" >> "$CONFIG"
+    echo "autopurge.purgeInterval=$ZOO_AUTOPURGE_PURGEINTERVAL" >> "$CONFIG"
+    echo "maxClientCnxns=$ZOO_MAX_CLIENT_CNXNS" >> "$CONFIG"
+
+    # Write myid only if it doesn't exist
+    if [[ ! -f "$ZOO_DATA_DIR/myid" ]]; then
+        echo "${ZOO_ID:-1}" > "$ZOO_DATA_DIR/myid"
+    fi
+
+    for server in $ZOO_SERVERS; do
+        echo "$server" >> "$CONFIG"
+    done
+}
+
 start_zookeeper() {
   trap "$KAFKA_HOME/bin/zookeeper-server-stop.sh; echo 'ZooKeeper stopped.'; exit" SIGHUP SIGINT SIGTERM
+  update_zk_config
   exec "$KAFKA_HOME/bin/zookeeper-server-start.sh" "$KAFKA_HOME/config/zookeeper.properties"
 }
 
 start_kafka() {
-
   trap "$KAFKA_HOME/bin/kafka-server-stop.sh; echo 'Kafka stopped.'; exit" SIGHUP SIGINT SIGTERM
   update_config
   exec "$KAFKA_HOME/bin/kafka-server-start.sh" "$KAFKA_HOME/config/server.properties"
@@ -184,6 +209,9 @@ case "$service" in
     ;;
   kafka)
     start_kafka
+    ;;
+  kafka-zookeeper)
+    start_zookeeper & start_kafka
     ;;
   *)
     usage_info

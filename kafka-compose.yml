@@ -6,9 +6,9 @@ networks:
 volumes:
   manager_data: {}
   zookeeper_data: {}
-  broker_1_data: {}
-  broker_2_data: {}
-  broker_3_data: {}
+  broker_oaf-lxsfpkaf200_data: {}
+  broker_oaf-lxsfpkaf201_data: {}
+  broker_oaf-lxsfpkaf202_data: {}
 services:
   manager:
     image: zen12/kafka-manager-docker
@@ -16,89 +16,138 @@ services:
     - 2190:9000
     networks:
     - kafka-net
-    links:
-    - zookeeper
     environment:
       KM_VERSION: 1.3.3.17
-      ZK_HOSTS: zookeeper:2181
+      ZK_HOSTS: broker_oaf-lxsfpkaf200:2181,broker_oaf-lxsfpkaf201:2181,broker_oaf-lxsfpkaf202:2181
     volumes:
     - manager_data:/kafka-manager
-  zookeeper:
-    image: zen12/kafka-cluster
-    command: zookeeper
+  exporter:
+    image: sf1-lgwsawik201.analytics.moodys.net:5000/danielqsj/kafka-exporter
+    command: --kafka.server=oaf-lxsfpkaf200:2090 --kafka.server=oaf-lxsfpkaf201:2091
+      --kafka.server=oaf-lxsfpkaf202:2092
+    networks:
+    - kafka-net
     ports:
+    - 9308:9308
+    depends_on:
+    - broker_oaf-lxsfpkaf200
+    - broker_oaf-lxsfpkaf201
+    - broker_oaf-lxsfpkaf202
+  connect:
+    image: sf1-lgwsawik201.analytics.moodys.net:5000/confluentinc/cp-kafka-connect:5.0.0
+    ports:
+    - 8083:8083
+    networks:
+    - kafka-net
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: broker_oaf-lxsfpkaf200:9094,broker_oaf-lxsfpkaf201:9094,broker_oaf-lxsfpkaf202:9094,
+      CONNECT_REST_ADVERTISED_HOST_NAME: 0.0.0.0
+      CONNECT_REST_PORT: 8083
+      CONNECT_GROUP_ID: kafka_connect
+      CONNECT_CONFIG_STORAGE_TOPIC: docker-connect-config
+      CONNECT_OFFSET_STORAGE_TOPIC: docker-connect-offsets
+      CONNECT_STATUS_STORAGE_TOPIC: docker-connect-status
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
+      CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: 'false'
+      CONNECT_PRODUCER_INTERCEPTOR_CLASSES: io.confluent.monitoring.clients.interceptor.MonitoringProducerInterceptor
+      CONNECT_CONSUMER_INTERCEPTOR_CLASSES: io.confluent.monitoring.clients.interceptor.MonitoringConsumerInterceptor
+      CONNECT_INTERNAL_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_INTERNAL_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+    depends_on:
+    - broker_oaf-lxsfpkaf200
+    - broker_oaf-lxsfpkaf201
+    - broker_oaf-lxsfpkaf202
+  broker_oaf-lxsfpkaf200:
+    hostname: broker_oaf-lxsfpkaf200
+    image: sf1-lgwsawik201.analytics.moodys.net:5000/kafka-cluster
+    environment:
+      KAFKA_BROKER_ID: 0
+      HOSTNAME_COMMAND: wget -t3 -T2 -qO-  http://169.254.169.254/latest/meta-data/local-ipv4
+      KAFKA_LOG_DIRS: /kafka-data
+      KAFKA_CREATE_TOPICS: __test1:1:1,app-logs:1:3:compact
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_RETENTION_BYTES: 1073741824
+      KAFKA_ZOOKEEPER_CONNECT: localhost:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INSIDE:PLAINTEXT,OUTSIDE:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: INSIDE://:9092,OUTSIDE://_{HOSTNAME_COMMAND}:2090
+      KAFKA_LISTENERS: INSIDE://:9092,OUTSIDE://:9094
+      KAFKA_INTER_BROKER_LISTENER_NAME: INSIDE
+      ZOO_ID: 0
+      ZOO_SERVERS: server.0=0.0.0.0:2888:3888 server.1=broker_oaf-lxsfpkaf201:2888:3888
+        server.2=broker_oaf-lxsfpkaf202:2888:3888
+    volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+    - broker_oaf-lxsfpkaf200_data:/kafka-data
+    deploy:
+      placement:
+        constraints:
+        - node.hostname == oaf-lxsfpkaf200
+    ports:
+    - 2090:9094
+    - 2180:2181
+    networks:
+    - kafka-net
+    command: kafka-zookeeper
+  broker_oaf-lxsfpkaf201:
+    hostname: broker_oaf-lxsfpkaf201
+    image: sf1-lgwsawik201.analytics.moodys.net:5000/kafka-cluster
+    environment:
+      KAFKA_BROKER_ID: 1
+      HOSTNAME_COMMAND: wget -t3 -T2 -qO-  http://169.254.169.254/latest/meta-data/local-ipv4
+      KAFKA_LOG_DIRS: /kafka-data
+      KAFKA_CREATE_TOPICS: __test1:1:1,app-logs:1:3:compact
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_RETENTION_BYTES: 1073741824
+      KAFKA_ZOOKEEPER_CONNECT: localhost:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INSIDE:PLAINTEXT,OUTSIDE:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: INSIDE://:9092,OUTSIDE://_{HOSTNAME_COMMAND}:2091
+      KAFKA_LISTENERS: INSIDE://:9092,OUTSIDE://:9094
+      KAFKA_INTER_BROKER_LISTENER_NAME: INSIDE
+      ZOO_ID: 1
+      ZOO_SERVERS: server.0=broker_oaf-lxsfpkaf200:2888:3888 server.1=0.0.0.0:2888:3888
+        server.2=broker_oaf-lxsfpkaf202:2888:3888
+    volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+    - broker_oaf-lxsfpkaf201_data:/kafka-data
+    deploy:
+      placement:
+        constraints:
+        - node.hostname == oaf-lxsfpkaf201
+    ports:
+    - 2091:9094
     - 2181:2181
     networks:
     - kafka-net
-  broker_1:
-    hostname: broker_1
-    image: zen12/kafka-cluster
-    environment:
-      KAFKA_BROKER_ID: 1
-      HOSTNAME_COMMAND: 'docker info | grep ^Name: | cut -d'' '' -f 2'
-      KAFKA_LOG_DIRS: "/kafka-data"
-      KAFKA_CREATE_TOPICS: __test1:1:1,app-logs:1:3:compact
-      KAFKA_LOG_RETENTION_HOURS: 168
-      KAFKA_LOG_RETENTION_BYTES: 1073741824
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INSIDE:PLAINTEXT,OUTSIDE:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: INSIDE://:9092,OUTSIDE://_{HOSTNAME_COMMAND}:9094
-      KAFKA_LISTENERS: INSIDE://:9092,OUTSIDE://:9094
-      KAFKA_INTER_BROKER_LISTENER_NAME: INSIDE
-    volumes:
-    - "/var/run/docker.sock:/var/run/docker.sock"
-    - broker_1_data:/kafka-data
-    ports:
-    - 2091:9094
-    networks:
-    - kafka-net
-    links:
-    - zookeeper:zookeeper
-  broker_2:
-    hostname: broker_2
-    image: zen12/kafka-cluster
+    command: kafka-zookeeper
+  broker_oaf-lxsfpkaf202:
+    hostname: broker_oaf-lxsfpkaf202
+    image: sf1-lgwsawik201.analytics.moodys.net:5000/kafka-cluster
     environment:
       KAFKA_BROKER_ID: 2
-      HOSTNAME_COMMAND: 'docker info | grep ^Name: | cut -d'' '' -f 2'
-      KAFKA_LOG_DIRS: "/kafka-data"
+      HOSTNAME_COMMAND: wget -t3 -T2 -qO-  http://169.254.169.254/latest/meta-data/local-ipv4
+      KAFKA_LOG_DIRS: /kafka-data
       KAFKA_CREATE_TOPICS: __test1:1:1,app-logs:1:3:compact
       KAFKA_LOG_RETENTION_HOURS: 168
       KAFKA_LOG_RETENTION_BYTES: 1073741824
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ZOOKEEPER_CONNECT: localhost:2181
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INSIDE:PLAINTEXT,OUTSIDE:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: INSIDE://:9092,OUTSIDE://_{HOSTNAME_COMMAND}:9094
+      KAFKA_ADVERTISED_LISTENERS: INSIDE://:9092,OUTSIDE://_{HOSTNAME_COMMAND}:2092
       KAFKA_LISTENERS: INSIDE://:9092,OUTSIDE://:9094
       KAFKA_INTER_BROKER_LISTENER_NAME: INSIDE
+      ZOO_ID: 2
+      ZOO_SERVERS: server.0=broker_oaf-lxsfpkaf200:2888:3888 server.1=broker_oaf-lxsfpkaf201:2888:3888
+        server.2=0.0.0.0:2888:3888
     volumes:
-    - "/var/run/docker.sock:/var/run/docker.sock"
-    - broker_2_data:/kafka-data
+    - /var/run/docker.sock:/var/run/docker.sock
+    - broker_oaf-lxsfpkaf202_data:/kafka-data
+    deploy:
+      placement:
+        constraints:
+        - node.hostname == oaf-lxsfpkaf202
     ports:
     - 2092:9094
+    - 2182:2181
     networks:
     - kafka-net
-    links:
-    - zookeeper:zookeeper
-  broker_3:
-    hostname: broker_3
-    image: zen12/kafka-cluster
-    environment:
-      KAFKA_BROKER_ID: 3
-      HOSTNAME_COMMAND: 'docker info | grep ^Name: | cut -d'' '' -f 2'
-      KAFKA_LOG_DIRS: "/kafka-data"
-      KAFKA_CREATE_TOPICS: __test1:1:1,app-logs:1:3:compact
-      KAFKA_LOG_RETENTION_HOURS: 168
-      KAFKA_LOG_RETENTION_BYTES: 1073741824
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INSIDE:PLAINTEXT,OUTSIDE:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: INSIDE://:9092,OUTSIDE://_{HOSTNAME_COMMAND}:9094
-      KAFKA_LISTENERS: INSIDE://:9092,OUTSIDE://:9094
-      KAFKA_INTER_BROKER_LISTENER_NAME: INSIDE
-    volumes:
-    - "/var/run/docker.sock:/var/run/docker.sock"
-    - broker_3_data:/kafka-data
-    ports:
-    - 2093:9094
-    networks:
-    - kafka-net
-    links:
-    - zookeeper:zookeeper
+    command: kafka-zookeeper

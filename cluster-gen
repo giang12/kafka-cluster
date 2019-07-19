@@ -1,25 +1,49 @@
 #!/usr/bin/env ruby
 
 require 'yaml'
+require 'optparse'
+require 'ostruct'
 
-# kafka node configs
-HOSTNAME_COMMAND="docker info | grep ^Name: | cut -d' ' -f 2"
-# persistent location
-KAFKA_LOG_DIRS="/kafka-data"
-# this will get created when the cluster is up
-KAFKA_CREATE_TOPICS="__test1:1:1,app-logs:1:3:compact"
-# retention policies
-KAFKA_LOG_RETENTION_HOURS=168
-KAFKA_LOG_RETENTION_BYTES=1073741824
+# Docker images
+IMAGE = ENV['KAFKA_IMAGE'] || 'zen12/kafka-cluster'
+MANAGER_IMAGE = ENV['KAFKA_MANAGER_IMAGE'] || 'zen12/kafka-manager-docker'
+CONNECTOR_IMAGE = ENV['KAFKA_CONNECTOR_IMAGE'] || 'confluentinc/cp-kafka-connect'
+EXPORTER_IMAGE = ENV['KAFKA_EXPORTER_IMAGE'] || 'danielqsj/kafka-exporter'
 
-IMAGE = 'zen12/kafka-cluster'
-MANAGER_IMAGE = 'zen12/kafka-manager-docker'
+HOSTNAME = `docker info | grep ^Name: | cut -d' ' -f 2`.strip
 IPStart = 2090
 ManPort = 2190
 ZKPort = 2181
 KM_VERSION = '1.3.3.17'
-# default cluster size is 3.
-cluster_size = ARGV.empty? ? 3 : ARGV[0].to_i
+
+# Kafka Broker ENV Vars
+# kafka node configs
+HOSTNAME_COMMAND= ENV["KAFKA_HOSTNAME_COMMAND"] || "docker info | grep ^Name: | cut -d' ' -f 2"
+# persistent location
+KAFKA_LOG_DIRS= ENV["KAFKA_LOG_DIRS"] || "/kafka-data"
+# this will get created when the cluster is up
+KAFKA_CREATE_TOPICS= ENV["KAFKA_CREATE_TOPICS"] || "__test1:1:1"
+# retention policies
+KAFKA_LOG_RETENTION_HOURS=ENV["KAFKA_LOG_RETENTION_HOURS"] || 168
+KAFKA_LOG_RETENTION_BYTES=ENV["KAFKA_LOG_RETENTION_BYTES"] || 1073741824
+
+# default options
+options = OpenStruct.new
+options.kafka_hosts = []
+options.zookeeper_hosts = []
+options.exporter_hosts = []
+options.connect_hosts = []
+
+# parse arguments
+file = __FILE__
+OptionParser.new do |opt|
+  opt.on('-k', '--brokers a,b,c', Array, 'specify kafka brokers, if not specified defaulted to node with labels `kafka`:`yes`') { |list| options['kafka_hosts'] = list.map { |k| k.to_s } }
+  opt.on('-z', '--zookeepers a,b,c', Array, 'specify zookeeper nodes, if not specified defaulted to node with labels `zookeeper`:`yes`') { |list| options['zookeeper_hosts'] = list.map { |z| z.to_s } }
+  opt.on('-e', '--exporters a,b,c', Array, 'specify kafka exporter nodes, if not specified defaulted to node with labels `exporter`:`yes`') { |list| options['exporter_hosts'] = list.map { |e| e.to_s } }
+  opt.on('-c', '--connectors a,b,c', Array, 'specify kafka connect nodes, if not specified defaulted to node with labels `connect`:`yes`') { |list| options['connect_hosts'] = list.map { |c| c.to_s } }
+  opt.parse!
+end.parse!
+
 
 # get Host IP
 if `uname`.strip == 'Darwin'
@@ -29,6 +53,7 @@ else
   HOST_IP = `ip -4 addr show scope global dev #{interface} | grep inet`.split(" ")[1][0..-4]
 end
 
+puts "Host Name for manager node is #{HOSTNAME}"
 puts "Host IP used for Kafka Brokers is #{HOST_IP}"
 
 # making compose file
@@ -41,45 +66,54 @@ COMPOSE = {
       'image' => MANAGER_IMAGE,
       'ports' => [ "#{ManPort}:9000" ],
       'networks' => [ 'kafka-net' ],
-      'links' => [ "zookeeper" ],
-      'environment' => { 
+      'environment' => {
         'KM_VERSION' => KM_VERSION,
-        'ZK_HOSTS'=>'zookeeper:2181'
+        'ZK_HOSTS'=>''
       },
       'volumes' => [ 
         "manager_data:/kafka-manager"
       ]
-    },
-    'zookeeper' => {
-      'image' => IMAGE,
-      'command' => 'zookeeper',
-      'ports' => [ "#{ZKPort}:2181" ],
-      'networks' => [ 'kafka-net' ],
     }
   }
 }
 
-def add_broker(id)
-  name = "broker_#{id}"
-  data_volume = name + "_data"
-  port = IPStart + id
-  
-  COMPOSE['volumes'][data_volume] = {}
+def getHostsByLabel(label)
+  found = []
+  # get instances with server_type == kafka
+  hosts = `docker node ls --format {{.Hostname}}`.strip.split("\n")
+  for host in hosts
+    # get the server_type
+    server_type = `docker node inspect #{host} --format '{{.Spec.Labels.#{label}}}'`.strip
+    if server_type == 'yes' then found << host end
+  end
 
-  COMPOSE['services'][name] = {
+  puts "Discovered #{found.length} #{label} hosts in docker swarm [#{found}]"
+
+  return found.sort() #to ensure order between runs
+end
+
+def add_broker(compose, host, index, zookeeper_hosts)
+  name = "broker_#{host}"
+  data_volume = name + "_data"
+  port = IPStart + index
+  
+  compose['volumes'][data_volume] = {}
+
+  compose['services'][name] = {
     'hostname' => name,
     'image' => IMAGE,
     'environment' => {
-      'KAFKA_BROKER_ID' => id,
+      'KAFKA_BROKER_ID' => index,
       #'KAFKA_ADVERTISED_HOST_NAME' => HOST_IP,
       'HOSTNAME_COMMAND' => HOSTNAME_COMMAND,#get the IP of the HOST COMPUTER from within docker container
       'KAFKA_LOG_DIRS' => KAFKA_LOG_DIRS,
+      'KAFKA_AUTO_CREATE_TOPICS_ENABLE' => "false",
       'KAFKA_CREATE_TOPICS' => KAFKA_CREATE_TOPICS,
       'KAFKA_LOG_RETENTION_HOURS' => KAFKA_LOG_RETENTION_HOURS,
       'KAFKA_LOG_RETENTION_BYTES' => KAFKA_LOG_RETENTION_BYTES,
-      'KAFKA_ZOOKEEPER_CONNECT' => "zookeeper:2181",
+      'KAFKA_ZOOKEEPER_CONNECT' => "zookeeper_#{zookeeper_hosts[index]}:2181",
       'KAFKA_LISTENER_SECURITY_PROTOCOL_MAP'=> "INSIDE:PLAINTEXT,OUTSIDE:PLAINTEXT",
-      'KAFKA_ADVERTISED_LISTENERS'=> "INSIDE://:9092,OUTSIDE://_{HOSTNAME_COMMAND}:9094",
+      'KAFKA_ADVERTISED_LISTENERS'=> "INSIDE://:9092,OUTSIDE://_{HOSTNAME_COMMAND}:#{port}",
       'KAFKA_LISTENERS' => "INSIDE://:9092,OUTSIDE://:9094",
       'KAFKA_INTER_BROKER_LISTENER_NAME' => "INSIDE"
     },
@@ -87,15 +121,146 @@ def add_broker(id)
       "/var/run/docker.sock:/var/run/docker.sock",
       "#{data_volume}:#{KAFKA_LOG_DIRS}"
     ],
+    'deploy' => {
+      'placement' => {
+        'constraints' => [ "node.hostname == #{host}" ]
+      }
+    },
     'ports' => [ "#{port}:9094" ],
     'networks' => [ 'kafka-net' ],
-    'links' => [ "zookeeper:zookeeper" ]
+    'command' => 'kafka',
+    'depends_on' => [ "zookeeper_#{zookeeper_hosts[index]}:2181" ]
   }
 end
 
-(1..cluster_size).each do |i|
-  add_broker(i)
+def add_zookeeper(compose, zookeeper_hosts, index)
+  name = "zookeeper_#{zookeeper_hosts[index]}"
+  compose['services'][name] = {
+    'hostname' => name,
+    'image' => IMAGE,
+    'command' => 'zookeeper',
+    'networks' => [ 'kafka-net' ],
+    'ports' => [ "#{ZKPort + index}:2181" ],
+    'environment' => {
+      'ZOO_ID' => index
+    },
+    'deploy' => {
+      'placement' => {
+        'constraints' => [ "node.hostname == #{zookeeper_hosts[index]}" ]
+      }
+    }
+  }
+
+  unless compose['services']['manager']['environment']['ZK_HOSTS'] == ''
+    compose['services']['manager']['environment']['ZK_HOSTS'] += ','
+  end
+  compose['services']['manager']['environment']['ZK_HOSTS'] += "zookeeper_#{zookeeper_hosts[index]}:2181"
+
+  zoo_servers = ''
+  zookeeper_hosts.each_with_index do |host, i|
+    #https://zookeeper.apache.org/doc/r3.3.3/zookeeperStarted.html
+    zoo_servers += "server.#{i}="
+    if i == index then zoo_servers += '0.0.0.0' else zoo_servers += "zookeeper_#{host}" end
+    zoo_servers += ':2888:3888 '
+  end
+  compose['services'][name]['environment']['ZOO_SERVERS'] = zoo_servers.strip
 end
+
+def add_connector(compose, hosts, host, index)
+  # important note about distributed mode:
+  # https://stackoverflow.com/questions/41253780/second-and-third-distributed-kafka-connector-workers-failing-to-work-correctly
+  # Since kafka connect is bad, you want to set unique group ids and share the
+  # same connector name so that you will share the same offset while maximizing
+  # the number of workers. In your connection, set tasks.max=1.
+  env = {}
+
+  bootstrap_servers = ""
+  depends_on = []
+  hosts.each_with_index do |host, i|
+    depends_on << "broker_#{host}"
+    bootstrap_servers += "broker_#{host}:9094"
+    unless i == hosts.length then bootstrap_servers += "," end
+  end
+  
+  env = {
+    'CONNECT_BOOTSTRAP_SERVERS' => bootstrap_servers,
+    'CONNECT_REST_ADVERTISED_HOST_NAME' => "#{host}",
+    'CONNECT_REST_PORT' => 8083 + index, # can use the same rest port since we will have a separate connector on each machine
+    'CONNECT_GROUP_ID' => "kafka_connect", #potentially need to set different group IDs
+    
+    # creates topics for setting configs
+    'CONNECT_CONFIG_STORAGE_TOPIC' => 'docker-connect-config',
+    'CONNECT_OFFSET_STORAGE_TOPIC' => 'docker-connect-offsets',
+    'CONNECT_STATUS_STORAGE_TOPIC' => 'docker-connect-status',
+
+    # configurations for consuming data. currently reads JSON strings
+    'CONNECT_KEY_CONVERTER' => 'org.apache.kafka.connect.storage.StringConverter',
+    'CONNECT_VALUE_CONVERTER' => 'org.apache.kafka.connect.json.JsonConverter',
+    'CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE' => 'false',
+    'CONNECT_PRODUCER_INTERCEPTOR_CLASSES' => 'io.confluent.monitoring.clients.interceptor.MonitoringProducerInterceptor',
+    'CONNECT_CONSUMER_INTERCEPTOR_CLASSES' => 'io.confluent.monitoring.clients.interceptor.MonitoringConsumerInterceptor',
+    'CONNECT_INTERNAL_KEY_CONVERTER' => 'org.apache.kafka.connect.json.JsonConverter',
+    'CONNECT_INTERNAL_VALUE_CONVERTER' => 'org.apache.kafka.connect.json.JsonConverter',
+    'CONNECT_PLUGIN_PATH' => '/usr/share/java/'
+  }
+
+  compose['services']["connect_#{index}"] = {
+    'image' => CONNECTOR_IMAGE,
+    'ports' => [ "#{8083 + index}:#{8083 + index}" ],
+    'networks' => [ 'kafka-net' ],
+    'environment' => env,
+    'depends_on' => depends_on
+  }
+end
+
+def add_exporter(compose, hosts, index)
+  kafka_servers = ""
+  depends_on = []
+
+  hosts.each_with_index do |host, i|
+    depends_on << "broker_#{host}"
+    kafka_servers += "--kafka.server=#{host}:#{IPStart + i} "
+  end
+
+  compose['services']["exporter_#{index}"] = {
+    'image' => EXPORTER_IMAGE,
+    'command' => kafka_servers.strip,
+    'networks' => [ 'kafka-net' ],
+    'ports' => ["#{9308 + index}:#{9308 + index}"],
+    'depends_on' => depends_on
+  }
+end
+
+
+##MAIN##
+KAFKA_HOSTS = options['kafka_hosts'].any? ? options['kafka_hosts'] : getHostsByLabel('kafka')
+ZOOKEEPER_HOSTS = options['zookeeper_hosts'].any? ? options['zookeeper_hosts'] : getHostsByLabel('zookeeper')
+EXPORTER_HOSTS = options['exporter_hosts'].any? ? options['exporter_hosts'] : getHostsByLabel('exporter')
+CONNECT_HOSTS = options['connect_hosts'].any? ? options['connect_hosts'] : getHostsByLabel('connect')
+
+if !KAFKA_HOSTS.any?
+  abort("missing kafka hosts, Captain!")
+elsif !ZOOKEEPER_HOSTS.any?
+  abort("missing zookeeper hosts, Captain!")
+elsif KAFKA_HOSTS.length != ZOOKEEPER_HOSTS.length
+  abort("need an equal number of kafka and zookeeper hosts!")
+end
+
+EXPORTER_HOSTS.each_with_index do |host, i|
+  add_exporter(COMPOSE, KAFKA_HOSTS, i)
+end
+CONNECT_HOSTS.each_with_index do |host, i|
+  add_connector(COMPOSE, KAFKA_HOSTS, host, i)
+end
+
+# there will be a one to one ratio of kafka to zookeeper nodes for now
+KAFKA_HOSTS.each_with_index do |host, i|
+  add_broker(COMPOSE, host, i, ZOOKEEPER_HOSTS)
+end
+ZOOKEEPER_HOSTS.each_with_index do |host, i|
+  add_zookeeper(COMPOSE, ZOOKEEPER_HOSTS, i)
+end
+  
 
 File.write('kafka-compose.yml', COMPOSE.to_yaml)
 

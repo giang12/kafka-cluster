@@ -1,6 +1,6 @@
 FROM anapsix/alpine-java
 
-MAINTAINER Zen Nguyen, https://github.com/giang12
+MAINTAINER Zen <nggiang12@gmail.com>
 
 # Versions
 ARG scala_version=2.12
@@ -9,7 +9,18 @@ ARG kafka_version=1.1.0
 ENV KAFKA_VERSION=$kafka_version \
     SCALA_VERSION=$scala_version \
     KAFKA_HOME=/kafka \
-    GLIBC_VERSION=$glibc_version
+    GLIBC_VERSION=$glibc_version \
+    ZOO_DATA_DIR=/tmp/zookeeper \
+    ZOO_DATA_LOG_DIR=/datalog \
+    ZOO_LOG_DIR=/logs \
+    ZOO_PORT=2181 \
+    ZOO_TICK_TIME=2000 \
+    ZOO_INIT_LIMIT=5 \
+    ZOO_SYNC_LIMIT=2 \
+    ZOO_AUTOPURGE_PURGEINTERVAL=0 \
+    ZOO_AUTOPURGE_SNAPRETAINCOUNT=3 \
+    ZOO_MAX_CLIENT_CNXNS=60
+
 
 # Fetch Kafka & Zookeeper tarfile from apache mirror & extract it to /kafka_<versions-info>.
 RUN \
@@ -37,6 +48,10 @@ ADD files/bin/start \
     /usr/bin/
 
 RUN chmod -R a+x /usr/bin/ && export PATH=$PATH:/usr/bin
+
+# Make zookeeper data dirs
+RUN set -ex; \
+     mkdir -p "$ZOO_DATA_LOG_DIR" "$ZOO_DATA_DIR" "$ZOO_LOG_DIR";
 
 # Expose config volume.
 VOLUME /kafka/config
