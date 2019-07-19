@@ -24,8 +24,6 @@ ENV KAFKA_VERSION=$kafka_version \
 
 # Fetch Kafka & Zookeeper tarfile from apache mirror & extract it to /kafka_<versions-info>.
 RUN \
-    export http_proxy=http://wwwproxy.nslb.ad.moodys.net:80 && \
-    export https_proxy=http://wwwproxy.nslb.ad.moodys.net:80 && \
     echo "===> fetching Kafka..."  && \
     wget -q http://mirror.23media.de/apache/kafka/${kafka_version}/kafka_${SCALA_VERSION}-${KAFKA_VERSION}.tgz -O /tmp/kafka.tgz && \
     \
@@ -36,9 +34,7 @@ RUN \
     \
     \
     echo "===> clean up..."  && \
-    rm /tmp/kafka.tgz && \
-    export http_proxy= && \
-    export https_proxy=
+    rm /tmp/kafka.tgz
 
 # Add Kafka & Zookeeper custom configurations.
 ADD files/config/server.properties files/config/zookeeper.properties files/config/log4j.properties /kafka/config/
