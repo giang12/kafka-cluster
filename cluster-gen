@@ -77,6 +77,12 @@ COMPOSE = {
   }
 }
 
+def dockerSrvcName(string)
+  name = string.split(".")[0] #if running under subdomain
+  name = name.strip.downcase
+  return name
+end
+
 def getHostsByLabel(label)
   found = []
   # get instances with server_type == kafka
@@ -93,10 +99,12 @@ def getHostsByLabel(label)
 end
 
 def add_broker(compose, host, index, zookeeper_hosts)
-  name = "broker_#{host}"
+  name = dockerSrvcName("broker_#{host}")
   data_volume = name + "_data"
   port = IPStart + index
   
+  zkName = dockerSrvcName("zookeeper_#{zookeeper_hosts[index]}")
+
   compose['volumes'][data_volume] = {}
 
   compose['services'][name] = {
@@ -111,7 +119,7 @@ def add_broker(compose, host, index, zookeeper_hosts)
       'KAFKA_CREATE_TOPICS' => KAFKA_CREATE_TOPICS,
       'KAFKA_LOG_RETENTION_HOURS' => KAFKA_LOG_RETENTION_HOURS,
       'KAFKA_LOG_RETENTION_BYTES' => KAFKA_LOG_RETENTION_BYTES,
-      'KAFKA_ZOOKEEPER_CONNECT' => "zookeeper_#{zookeeper_hosts[index]}:2181",
+      'KAFKA_ZOOKEEPER_CONNECT' => "#{zkName}:2181",
       'KAFKA_LISTENER_SECURITY_PROTOCOL_MAP'=> "INSIDE:PLAINTEXT,OUTSIDE:PLAINTEXT",
       'KAFKA_ADVERTISED_LISTENERS'=> "INSIDE://:9092,OUTSIDE://_{HOSTNAME_COMMAND}:#{port}",
       'KAFKA_LISTENERS' => "INSIDE://:9092,OUTSIDE://:9094",
@@ -129,12 +137,13 @@ def add_broker(compose, host, index, zookeeper_hosts)
     'ports' => [ "#{port}:9094" ],
     'networks' => [ 'kafka-net' ],
     'command' => 'kafka',
-    'depends_on' => [ "zookeeper_#{zookeeper_hosts[index]}:2181" ]
+    'depends_on' => [ "#{zkName}:2181" ]
   }
 end
 
 def add_zookeeper(compose, zookeeper_hosts, index)
-  name = "zookeeper_#{zookeeper_hosts[index]}"
+  name = dockerSrvcName("zookeeper_#{zookeeper_hosts[index]}")
+
   compose['services'][name] = {
     'hostname' => name,
     'image' => IMAGE,
@@ -151,19 +160,23 @@ def add_zookeeper(compose, zookeeper_hosts, index)
     }
   }
 
-  unless compose['services']['manager']['environment']['ZK_HOSTS'] == ''
-    compose['services']['manager']['environment']['ZK_HOSTS'] += ','
-  end
-  compose['services']['manager']['environment']['ZK_HOSTS'] += "zookeeper_#{zookeeper_hosts[index]}:2181"
-
+  #udpate other zk hosts
   zoo_servers = ''
   zookeeper_hosts.each_with_index do |host, i|
     #https://zookeeper.apache.org/doc/r3.3.3/zookeeperStarted.html
     zoo_servers += "server.#{i}="
-    if i == index then zoo_servers += '0.0.0.0' else zoo_servers += "zookeeper_#{host}" end
+    if i == index then zoo_servers += '0.0.0.0' else zoo_servers += dockerSrvcName("zookeeper_#{host}") end
     zoo_servers += ':2888:3888 '
   end
   compose['services'][name]['environment']['ZOO_SERVERS'] = zoo_servers.strip
+
+
+  #register with manager
+  unless compose['services']['manager']['environment']['ZK_HOSTS'] == ''
+    compose['services']['manager']['environment']['ZK_HOSTS'] += ','
+  end
+  compose['services']['manager']['environment']['ZK_HOSTS'] += "#{name}:2181"
+
 end
 
 def add_connector(compose, hosts, host, index)
@@ -177,8 +190,9 @@ def add_connector(compose, hosts, host, index)
   bootstrap_servers = ""
   depends_on = []
   hosts.each_with_index do |host, i|
-    depends_on << "broker_#{host}"
-    bootstrap_servers += "broker_#{host}:9094"
+    n = dockerSrvcName("broker_#{host}")
+    depends_on << "#{n}"
+    bootstrap_servers += "#{n}:9094"
     unless i == hosts.length then bootstrap_servers += "," end
   end
   
@@ -209,7 +223,12 @@ def add_connector(compose, hosts, host, index)
     'ports' => [ "#{8083 + index}:#{8083 + index}" ],
     'networks' => [ 'kafka-net' ],
     'environment' => env,
-    'depends_on' => depends_on
+    'depends_on' => depends_on,
+    'deploy' => {
+      'placement' => {
+        'constraints' => [ "node.hostname == #{host}" ]
+      }
+    }
   }
 end
 
@@ -218,8 +237,9 @@ def add_exporter(compose, hosts, index)
   depends_on = []
 
   hosts.each_with_index do |host, i|
-    depends_on << "broker_#{host}"
-    kafka_servers += "--kafka.server=#{host}:#{IPStart + i} "
+    n = dockerSrvcName("broker_#{host}")
+    depends_on << "#{n}"
+    kafka_servers += " --kafka.server=#{n}:9094"
   end
 
   compose['services']["exporter_#{index}"] = {
